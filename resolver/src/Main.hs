@@ -1,7 +1,18 @@
 module Main where
 
 import Control.Arrow
+import Control.Monad
 import Data.List
+import Text.ParserCombinators.Parsec hiding (spaces)
+
+import Control.Applicative((<*))
+import Text.Parsec
+import Text.Parsec.String
+import Text.Parsec.Expr
+import Text.Parsec.Token
+import Text.Parsec.Language
+
+import System.Console.Haskeline
 
 data LogicalExpression =
   Literal String
@@ -22,7 +33,7 @@ precendence (Negation _) = 1
 precendence (And _) = 2
 precendence (Or _) = 2
 precendence (If _ _) = 3
-precendence (Iff _ _) = 3
+precendence (Iff _ _) = 4
 
 repr_expr :: Int -> LogicalExpression -> String
 repr_expr prec expr =
@@ -37,15 +48,44 @@ compose_expr _ (Literal s) = s
 compose_expr _ T = "T"
 compose_expr _ F = "F"
 compose_expr _ (And []) = "[^]"
-compose_expr _ (Or []) = "[v]"
+compose_expr _ (Or []) = "[|]"
 compose_expr prec (Negation e) = "¬" ++ repr_expr prec e
 compose_expr prec (And (he:le)) = (repr_expr prec he) ++ (concat $ map (\e ->  "^" ++ (repr_expr prec e)) le)
-compose_expr prec (Or (he:le)) = (repr_expr prec he) ++ (concat $ map (\e ->  "v" ++ (repr_expr prec e)) le)
+compose_expr prec (Or (he:le)) = (repr_expr prec he) ++ (concat $ map (\e ->  "|" ++ (repr_expr prec e)) le)
 compose_expr prec (If e1 e2) = (repr_expr prec e1) ++ "=>" ++ (repr_expr prec e2)
 compose_expr prec (Iff e1 e2) = (repr_expr prec e1) ++ "<=>" ++ (repr_expr prec e2)
 
 show_expr :: LogicalExpression -> String
 show_expr expr = compose_expr (precendence expr) expr
+
+exprParser :: Parser LogicalExpression
+exprParser = buildExpressionParser table term <?> "expression"
+  where
+    table = [
+        [prefix "¬" Negation, prefix "!" Negation]
+      , [binary "^" (\a b -> And [a, b]), binary "|" (\a b -> Or [a, b])]
+      , [binary "=>" If, binary "<=" (flip If)]
+      , [binary "<=>" Iff]
+      ]
+    term = m_parens exprParser
+      <|> (m_reserved "T" >> return T)
+      <|> (m_reserved "F" >> return F)
+      <|> Literal <$> m_identifier
+    prefix name fun = Prefix (m_reservedOp name >> return fun)
+    binary name fun = Infix  (m_reservedOp name >> return fun) AssocLeft
+    lexer = makeTokenParser $ emptyDef {
+        commentStart = "/*"
+      , commentEnd = "/*"
+      , commentLine = "//"
+      , identStart = upper
+      , identLetter = alphaNum
+      , reservedNames = [ "T", "F" ]
+      , reservedOpNames = [ "<=>", "=>", "^", "|", "¬", "!" ]
+      }
+    m_parens = parens lexer
+    m_reserved = reserved lexer
+    m_reservedOp = reservedOp lexer
+    m_identifier = identifier lexer
 
 expr_to_and_arr (And a_exprs) = a_exprs
 expr_to_and_arr e = [e]
@@ -78,12 +118,16 @@ expr_to_cnf (Iff e1 e2) = expr_to_cnf $ And [If e1 e2, If e2 e1]
 expr_to_cnf e = e
 
 main :: IO ()
-main = do
-  putStrLn "Resolver"
-  putStrLn $ (show_expr e1) ++ " ===> " ++ (show_expr (expr_to_cnf e1))
-  putStrLn $ (show_expr e2) ++ " ===> " ++ (show_expr (expr_to_cnf e2))
-  putStrLn $ (show_expr e3) ++ " ===> " ++ (show_expr (expr_to_cnf e3))
-    where
-      e1 = Negation $ Or [(And [Negation (Literal "A"), If (Literal "B") (Literal "C")]), Literal "C"]
-      e2 = Iff (And [Literal "A", Literal "B", Literal "C"]) (Or [Literal "D", Negation (Literal "E")])
-      e3 = Iff (Literal "A") (Literal "B")
+main = runInputT defaultSettings loop
+  where
+    loop :: InputT IO ()
+    loop = do
+      einput <- getInputLine "resolver> "
+      case einput of
+        Nothing ->      return ()
+        Just "quit" ->  return ()
+        Just input -> do
+          case parse exprParser "" input of
+            (Right expr)  -> outputStrLn $ show_expr (expr_to_cnf expr)
+            _             -> outputStrLn "ParseError"
+          loop
