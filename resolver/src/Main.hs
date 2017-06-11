@@ -19,5 +19,5 @@ main = runInputT defaultSettings loop
         Just input -> do
           case parseExpr input of
             (Right expr)  -> outputStrLn $ show_expr (expr_to_cnf expr)
-            _             -> outputStrLn "ParseError"
+            (Left err)    -> outputStrLn $ show err
           loop
