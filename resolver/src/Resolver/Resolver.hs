@@ -1,6 +1,6 @@
 module Resolver.Resolver (
-    expr_to_cnf
-  , show_expr
+    exprToCnf
+  , exprToCnfArr
   , LogicalExpression(..)
 ) where
 
@@ -17,65 +17,43 @@ data LogicalExpression =
   | Iff LogicalExpression LogicalExpression
   deriving Show;
 
-precendence :: LogicalExpression -> Int
-precendence T = 0
-precendence F = 0
-precendence (Literal _) = 0
-precendence (Negation _) = 1
-precendence (And _) = 2
-precendence (Or _) = 2
-precendence (If _ _) = 3
-precendence (Iff _ _) = 4
+data LogicalAtom =
+  Atom String
+  | Negated String
 
-repr_expr :: Int -> LogicalExpression -> String
-repr_expr prec expr =
-  if prec <= my_prec then parenthesize composed_expr else composed_expr
-    where
-      my_prec = precendence expr
-      parenthesize s = "(" ++ s ++ ")"
-      composed_expr = compose_expr my_prec expr
+negateAtom :: LogicalAtom -> LogicalAtom
+negateAtom (Atom name)    = Negated name
+negateAtom (Negated name) = Atom name
 
-compose_expr :: Int -> LogicalExpression -> String
-compose_expr _ (Literal s) = s
-compose_expr _ T = "T"
-compose_expr _ F = "F"
-compose_expr _ (And []) = "[^]"
-compose_expr _ (Or []) = "[|]"
-compose_expr prec (Negation e) = "¬" ++ repr_expr prec e
-compose_expr prec (And (he:le)) = (repr_expr prec he) ++ (concat $ map (\e ->  "^" ++ (repr_expr prec e)) le)
-compose_expr prec (Or (he:le)) = (repr_expr prec he) ++ (concat $ map (\e ->  "|" ++ (repr_expr prec e)) le)
-compose_expr prec (If e1 e2) = (repr_expr prec e1) ++ "=>" ++ (repr_expr prec e2)
-compose_expr prec (Iff e1 e2) = (repr_expr prec e1) ++ "<=>" ++ (repr_expr prec e2)
+exprToCnf :: LogicalExpression -> LogicalExpression
+exprToCnf expr = And $ map (\o_exprs -> Or $ map atomToExpr o_exprs) $ exprToCnfArr expr
+  where
+    atomToExpr (Atom name)    = Literal name
+    atomToExpr (Negated name) = Negation (Literal name)
 
-show_expr :: LogicalExpression -> String
-show_expr expr = compose_expr (precendence expr) expr
+distributeOr :: [[[LogicalAtom]]] -> [[LogicalAtom]]
+distributeOr [] = []
+distributeOr [ao_exprs] = ao_exprs
+distributeOr (ao_expr:oao_expr) = concat $ map (\o_expr -> map (o_expr++) rest_ao_expr) ao_expr
+  where
+    rest_ao_expr = distributeOr oao_expr
 
-expr_to_and_arr (And a_exprs) = a_exprs
-expr_to_and_arr e = [e]
-
-expr_to_or_arr (Or a_exprs) = a_exprs
-expr_to_or_arr e = [e]
-
-distribute_or :: [[[LogicalExpression]]] -> [[LogicalExpression]]
-distribute_or [] = []
-distribute_or [a_exprs] = a_exprs
-distribute_or (a_exprs:o_exprs) = map (\o_r_expr -> map (\o_expr -> Or $ concat $ map expr_to_or_arr $ o_expr ++ o_r_expr) a_exprs) (distribute_or o_exprs)
-
-expr_to_cnf :: LogicalExpression -> LogicalExpression
-expr_to_cnf expr@(Literal _) = expr
-expr_to_cnf expr@(Negation (Literal _)) = expr
-expr_to_cnf (Negation (Negation expr)) = expr_to_cnf expr
-expr_to_cnf (Negation (And exprs)) = expr_to_cnf $ Or $ map Negation exprs
-expr_to_cnf (Negation (Or exprs)) = expr_to_cnf $ And $ map Negation exprs
-expr_to_cnf (Negation T) = F
-expr_to_cnf (Negation F) = T
-expr_to_cnf (Negation e) = expr_to_cnf $ Negation $ expr_to_cnf e
-expr_to_cnf (And []) = F
-expr_to_cnf (Or []) = T
-expr_to_cnf (And [expr]) = expr_to_cnf expr
-expr_to_cnf (Or [expr]) = expr_to_cnf expr
-expr_to_cnf (And exprs) = And $ concat (map (expr_to_and_arr.expr_to_cnf) exprs)
-expr_to_cnf (Or exprs) = And $ concat $ distribute_or (map ((map expr_to_or_arr).expr_to_and_arr.expr_to_cnf) exprs)
-expr_to_cnf (If e1 e2) = expr_to_cnf $ Or [Negation e1, e2]
-expr_to_cnf (Iff e1 e2) = expr_to_cnf $ And [If e1 e2, If e2 e1]
-expr_to_cnf e = e
+exprToCnfArr :: LogicalExpression -> [[LogicalAtom]]
+exprToCnfArr (Literal name) = [[Atom name]]
+exprToCnfArr (Negation (Literal name)) = [[Negated name]]
+exprToCnfArr (Negation (Negation expr)) = exprToCnfArr expr
+exprToCnfArr (Negation (And exprs)) = exprToCnfArr $ Or $ map Negation exprs
+exprToCnfArr (Negation (Or exprs)) = exprToCnfArr $ And $ map Negation exprs
+exprToCnfArr (Negation T) = exprToCnfArr F
+exprToCnfArr (Negation F) = exprToCnfArr T
+exprToCnfArr (Negation e) = exprToCnfArr $ Negation $ exprToCnf e
+exprToCnfArr (And []) = []
+exprToCnfArr (Or []) = [[]]
+exprToCnfArr (And [expr]) = exprToCnfArr expr
+exprToCnfArr (Or [expr]) = exprToCnfArr expr
+exprToCnfArr (And exprs) = concat $ map exprToCnfArr exprs
+exprToCnfArr (Or exprs) = distributeOr (map exprToCnfArr exprs)
+exprToCnfArr (If e1 e2) = exprToCnfArr $ Or [Negation e1, e2]
+exprToCnfArr (Iff e1 e2) = exprToCnfArr $ And [If e1 e2, If e2 e1]
+exprToCnfArr T = [[]]
+exprToCnfArr F = []

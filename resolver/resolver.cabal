@@ -21,4 +21,5 @@ executable resolver
                        , parsec
                        , haskeline
   other-modules:       Resolver.Parser
+                       , Resolver.Printer
                        , Resolver.Resolver
