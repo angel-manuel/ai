@@ -1,5 +1,6 @@
 module Resolver.Parser (
   parseExpr
+  , parseCommand
 ) where
 
 import Control.Applicative((<*))
@@ -12,6 +13,19 @@ import Text.Parsec.Token
 import Text.Parsec.Language
 
 import Resolver.Resolver
+
+parseCommand :: String -> Either ParseError LogicalCommand
+parseCommand = parse commandParser ""
+
+commandParser :: Parser LogicalCommand
+commandParser = do
+  expr <- exprParser
+  spaces
+  command <- oneOf ".?"
+  case command of
+    '.' -> return $ Tell expr
+    '?' -> return $ Ask expr
+    _   -> fail "impossible"
 
 parseExpr :: String -> Either ParseError LogicalExpression
 parseExpr = parse exprParser ""
