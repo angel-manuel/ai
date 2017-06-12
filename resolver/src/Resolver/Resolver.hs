@@ -1,10 +1,13 @@
 module Resolver.Resolver (
     exprToCnf
   , exprToCnfArr
+  , exprToCnfSet
   , LogicalExpression(..)
 ) where
 
+import Control.Monad.State.Lazy
 import Data.List
+import qualified Data.Set as Set
 
 data LogicalExpression =
   Literal String
@@ -15,45 +18,49 @@ data LogicalExpression =
   | Or [LogicalExpression]
   | If LogicalExpression LogicalExpression
   | Iff LogicalExpression LogicalExpression
-  deriving Show;
+  deriving (Show, Eq);
 
 data LogicalAtom =
   Atom String
   | Negated String
+  deriving (Show, Eq, Ord);
 
 negateAtom :: LogicalAtom -> LogicalAtom
 negateAtom (Atom name)    = Negated name
 negateAtom (Negated name) = Atom name
 
 exprToCnf :: LogicalExpression -> LogicalExpression
-exprToCnf expr = And $ map (\o_exprs -> Or $ map atomToExpr o_exprs) $ exprToCnfArr expr
+exprToCnf expr = And $ fmap (\o_exprs -> Or $ fmap atomToExpr o_exprs) $ exprToCnfArr expr
   where
     atomToExpr (Atom name)    = Literal name
     atomToExpr (Negated name) = Negation (Literal name)
 
-distributeOr :: [[[LogicalAtom]]] -> [[LogicalAtom]]
-distributeOr [] = []
+distributeOr :: [Set.Set (Set.Set LogicalAtom)] -> Set.Set (Set.Set LogicalAtom)
+distributeOr [] = Set.empty
 distributeOr [ao_exprs] = ao_exprs
-distributeOr (ao_expr:oao_expr) = concat $ map (\o_expr -> map (o_expr++) rest_ao_expr) ao_expr
+distributeOr (ao_expr:oao_expr) = Set.unions $ Set.toList $ Set.map (\o_expr -> Set.map (Set.union o_expr) rest_ao_expr) ao_expr
   where
     rest_ao_expr = distributeOr oao_expr
 
 exprToCnfArr :: LogicalExpression -> [[LogicalAtom]]
-exprToCnfArr (Literal name) = [[Atom name]]
-exprToCnfArr (Negation (Literal name)) = [[Negated name]]
-exprToCnfArr (Negation (Negation expr)) = exprToCnfArr expr
-exprToCnfArr (Negation (And exprs)) = exprToCnfArr $ Or $ map Negation exprs
-exprToCnfArr (Negation (Or exprs)) = exprToCnfArr $ And $ map Negation exprs
-exprToCnfArr (Negation T) = exprToCnfArr F
-exprToCnfArr (Negation F) = exprToCnfArr T
-exprToCnfArr (Negation e) = exprToCnfArr $ Negation $ exprToCnf e
-exprToCnfArr (And []) = []
-exprToCnfArr (Or []) = [[]]
-exprToCnfArr (And [expr]) = exprToCnfArr expr
-exprToCnfArr (Or [expr]) = exprToCnfArr expr
-exprToCnfArr (And exprs) = concat $ map exprToCnfArr exprs
-exprToCnfArr (Or exprs) = distributeOr (map exprToCnfArr exprs)
-exprToCnfArr (If e1 e2) = exprToCnfArr $ Or [Negation e1, e2]
-exprToCnfArr (Iff e1 e2) = exprToCnfArr $ And [If e1 e2, If e2 e1]
-exprToCnfArr T = [[]]
-exprToCnfArr F = []
+exprToCnfArr expr = map Set.toList $ Set.toList $ exprToCnfSet expr
+
+exprToCnfSet :: LogicalExpression -> Set.Set (Set.Set LogicalAtom)
+exprToCnfSet (Literal name) = Set.singleton $ Set.singleton $ Atom name
+exprToCnfSet (Negation (Literal name)) = Set.singleton $ Set.singleton $ Negated name
+exprToCnfSet (Negation (Negation expr)) = exprToCnfSet expr
+exprToCnfSet (Negation (And exprs)) = exprToCnfSet $ Or $ fmap Negation exprs
+exprToCnfSet (Negation (Or exprs)) = exprToCnfSet $ And $ fmap Negation exprs
+exprToCnfSet (Negation T) = exprToCnfSet F
+exprToCnfSet (Negation F) = exprToCnfSet T
+exprToCnfSet (Negation e) = exprToCnfSet $ Negation $ exprToCnf e
+exprToCnfSet (And []) = Set.empty                 -- []
+exprToCnfSet (Or []) = Set.singleton $ Set.empty  -- [[]]
+exprToCnfSet (And [expr]) = exprToCnfSet expr
+exprToCnfSet (Or [expr]) = exprToCnfSet expr
+exprToCnfSet (And exprs) = Set.unions $ map exprToCnfSet exprs
+exprToCnfSet (Or exprs) = distributeOr (map exprToCnfSet exprs)
+exprToCnfSet (If e1 e2) = exprToCnfSet $ Or [Negation e1, e2]
+exprToCnfSet (Iff e1 e2) = exprToCnfSet $ And [If e1 e2, If e2 e1]
+exprToCnfSet T = Set.singleton $ Set.empty -- [[]]
+exprToCnfSet F = Set.empty                 -- []
