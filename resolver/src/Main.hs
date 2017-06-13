@@ -3,7 +3,6 @@ module Main where
 import System.Console.Haskeline
 
 import Resolver.Parser
-import Resolver.Printer
 import Resolver.Resolver
 
 main :: IO ()
@@ -19,7 +18,7 @@ main = runInputT defaultSettings $ loop emptyKB
           case parseCommand input of
             (Right (Tell expr)) -> do
               let new_kb = tellKB expr kb
-              outputStrLn $ "KB = " ++ (showExpr $ explainKB new_kb)
+              outputStrLn $ "KB = " ++ (show $ explainKB new_kb)
               loop new_kb
             (Right (Sat expr))  -> do
               outputStrLn $ show $ satKB expr kb

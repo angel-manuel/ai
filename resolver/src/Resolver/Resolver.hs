@@ -32,7 +32,26 @@ data LogicalExpression =
   | Or [LogicalExpression]
   | If LogicalExpression LogicalExpression
   | Iff LogicalExpression LogicalExpression
-  deriving (Show, Eq);
+  deriving (Eq);
+
+instance Show LogicalExpression where
+  showsPrec _ (Literal name) = showString name
+  showsPrec _ T = showString "t"
+  showsPrec _ F = showString "f"
+  showsPrec p (Negation e) = showParen (p > 3) $
+    showString "¬" . showsPrec 3 e
+  showsPrec p (And []) = showString "[^]"
+  showsPrec p (Or []) = showString "[|]"
+  showsPrec p (And [e]) = showsPrec p e
+  showsPrec p (Or [e]) = showsPrec p e
+  showsPrec p (And (e:a_expr)) = showParen (p > 2) $
+    showsPrec 3 e . showString "^" . showsPrec 2 (And a_expr)
+  showsPrec p (Or (e:o_expr)) = showParen (p > 2) $
+    showsPrec 3 e . showString "|" . showsPrec 2 (Or o_expr)
+  showsPrec p (If e1 e2) = showParen (p > 0) $
+    showsPrec 1 e1 . showString "=>" . showsPrec 0 e2
+  showsPrec p (Iff e1 e2) = showParen (p > 0) $
+    showsPrec 1 e1 . showString "<=>" . showsPrec 0 e2
 
 data LogicalAtom =
   Atom String
