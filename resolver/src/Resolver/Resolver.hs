@@ -1,7 +1,9 @@
 module Resolver.Resolver (
   KnowledgeBase(..)
+  , TruthValue(..)
   , emptyKB
   , tellKB
+  , satKB
   , askKB
   , explainKB
   , exprToCnf
@@ -16,10 +18,9 @@ import Control.Monad.State.Lazy
 import Data.List
 import qualified Data.Set as Set
 
-import Debug.Trace
-
 data LogicalCommand =
   Tell LogicalExpression
+  | Sat LogicalExpression
   | Ask LogicalExpression;
 
 data LogicalExpression =
@@ -109,8 +110,28 @@ emptyKB = Set.empty
 tellKB :: LogicalExpression -> KnowledgeBase -> KnowledgeBase
 tellKB expr = Set.union (exprToCnfSet expr)
 
-askKB :: LogicalExpression -> KnowledgeBase -> Bool
-askKB expr kb = not $ isCnfSat (Set.union (exprToCnfSet $ Negation expr) kb)
+satKB :: LogicalExpression -> KnowledgeBase -> Bool
+satKB expr kb = not $ isCnfSat (Set.union (exprToCnfSet $ Negation expr) kb)
+
+data TruthValue =
+  Is
+  | Unknown
+  | Isnt
+  | Undecidible
+  deriving Show;
+
+askKB :: LogicalExpression -> KnowledgeBase -> TruthValue
+askKB expr kb = assign_truth is_pos_sat is_neg_sat
+  where
+    cnf_pos = (Set.union (exprToCnfSet $ expr) kb)
+    cnf_neg = (Set.union (exprToCnfSet $ Negation expr) kb)
+    is_pos_sat = isCnfSat cnf_pos
+    is_neg_sat = isCnfSat cnf_neg
+    assign_truth is_pos_sat is_neg_sat
+      | is_pos_sat && not is_neg_sat = Is
+      | is_neg_sat && not is_pos_sat = Isnt
+      | is_pos_sat && is_neg_sat = Unknown
+      | otherwise = Undecidible
 
 explainKB :: KnowledgeBase -> LogicalExpression
 explainKB = cnfSetToExpr

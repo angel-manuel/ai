@@ -21,9 +21,10 @@ commandParser :: Parser LogicalCommand
 commandParser = do
   expr <- exprParser
   spaces
-  command <- oneOf ".?"
+  command <- oneOf ".?-"
   case command of
     '.' -> return $ Tell expr
+    '-' -> return $ Sat expr
     '?' -> return $ Ask expr
     _   -> fail "impossible"
 

@@ -1,8 +1,5 @@
 module Main where
 
-import Control.Monad
-import Control.Monad.State.Lazy
-
 import System.Console.Haskeline
 
 import Resolver.Parser
@@ -22,8 +19,11 @@ main = runInputT defaultSettings $ loop emptyKB
           case parseCommand input of
             (Right (Tell expr)) -> do
               let new_kb = tellKB expr kb
-              outputStrLn $ showExpr $ explainKB new_kb
+              outputStrLn $ "KB = " ++ (showExpr $ explainKB new_kb)
               loop new_kb
+            (Right (Sat expr))  -> do
+              outputStrLn $ show $ satKB expr kb
+              loop kb
             (Right (Ask expr))  -> do
               outputStrLn $ show $ askKB expr kb
               loop kb
